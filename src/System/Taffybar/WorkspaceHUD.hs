@@ -31,6 +31,22 @@ import           System.Taffybar.Pager
 
 data WorkspaceState = Active | Visible | Hidden | Empty | Urgent deriving (Show, Eq)
 
+data WindowInfo =
+  WindowInfo { windowTitle :: String
+             , windowClass :: String
+             , icons :: [EWMHIcon]
+             }
+
+getWindowInfo :: X11Window -> IO WindowInfo
+getWindowInfo w = withDefaultCtx $ do
+  wTitle <- getWindowTitle w
+  wClass <- getWindowClass w
+  wIcons <- getWindowIcons w
+  return $ WindowInfo { windowTitle = wTitle
+                      , windowClass = wClas
+                      , icons = wIcons
+                      }
+
 data Workspace =
   Workspace { workspaceIdx :: WorkspaceIdx
             , workspaceName :: String
@@ -50,6 +66,18 @@ instance WorkspaceWidgetController WWC where
   getWidget (WWC wc) = getWidget wc
   updateWidget (WWC wc) workspace =
     WWC <$> updateWidget wc workspace
+
+data WorkspaceContentsController = WorkspaceLabelController
+  { container :: Gtk.HBox
+  , label :: Gtk.Label
+  , images :: [Gtk.Image]
+  , contentsWorkspace :: Workspace
+  }
+
+instance WorkspaceWidgetController WorkspaceContentsController where
+  getWidget cc = Gtk.toWidget container cc
+  updateWidget cc workspace = do
+    
 
 data WorkspaceHUDConfig =
   WorkspaceHUDConfig
