@@ -25,9 +25,11 @@ import           Control.Monad
 import qualified Data.Map as M
 import qualified Data.MultiMap as MM
 import qualified Graphics.UI.Gtk as Gtk
+import qualified Graphics.UI.Gtk.Layout.Table as T
 import           Graphics.X11.Xlib.Extras
 import           System.Information.EWMHDesktopInfo
 import           System.Taffybar.Pager
+import           Text.Printf
 
 data WorkspaceState = Active | Visible | Hidden | Empty | Urgent deriving (Show, Eq)
 
@@ -179,14 +181,45 @@ onActiveChanged controllersRef _ =
 data WorkspaceButtonController =
   WorkspaceButtonController { button :: Gtk.EventBox
                             , buttonWorkspace :: Workspace
-                            , contentsController :: WWC }
+                            , contentsController :: WWC
+                            }
 
 instance WorkspaceWidgetController WorkspaceButtonController
   where
     getWidget wbc = Gtk.toWidget $ button wbc
-    updateWidget wbc workspace = updateWidget (contentsController wbc) workspace
+    updateWidget wbc workspace = do
+      newContents <- updateWidget (contentsController wbc) workspace
+      return wbc { contentsController = newContents }
 
-buildButtonController :: WorkspaceHUDConfig -> Workspace -> IO WWC
+buildButtonController :: WorkspaceHUDConfig ->
+                         Workspace ->
+                         (WorkspaceHUDConfig -> Workspace -> WWC) ->
+                         IO WorkspaceButtonController
 buildButtonController cfg workspace contentsBuilder =
   ebox <- Gtk.eventBoxNew
-  return $ WorkspaceButtonController
+  cc <- contentsBuilder
+  contentsWidget <- getWidget cc
+  Gtk.containerAdd contents contentsWidget
+  return $ WorkspaceButtonController { button = ebox
+                                     , buttonWorkspace = workspace
+                                     , contentsController = cc
+                                     }
+
+data UnderlineController =
+  UnderlineController { table :: T.Table
+                      -- XXX: An event box is used here because we need to
+                      -- change the background
+                      , underline :: Gtk.EventBox
+                      , contentsController :: WWC
+                      }
+
+instance WorkspaceWidgetController UnderlineController
+  where
+    getWidget uc = Gtk.toWidget $ table uc
+    updateWidget uc workspace = do
+      newContents <- updateWidget (contentsController uc) workspace
+      return uc { contentsController = newContents }
+
+getWidgetName :: Workspace -> String -> String
+getWidgetName ws wname =
+  printf "%s"
