@@ -78,8 +78,7 @@ data WorkspaceContentsController = WorkspaceLabelController
 
 instance WorkspaceWidgetController WorkspaceContentsController where
   getWidget cc = Gtk.toWidget container cc
-  updateWidget cc workspace = do
-    
+  updateWidget cc workspace = return cc
 
 data WorkspaceHUDConfig =
   WorkspaceHUDConfig
@@ -222,4 +221,4 @@ instance WorkspaceWidgetController UnderlineController
 
 getWidgetName :: Workspace -> String -> String
 getWidgetName ws wname =
-  printf "%s"
+  printf "Workspace-%s-%s-%s" wname (workspaceName ws) (workspaceState ws)
