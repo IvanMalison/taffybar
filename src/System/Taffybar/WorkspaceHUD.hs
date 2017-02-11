@@ -11,17 +11,21 @@
 -----------------------------------------------------------------------------
 
 module System.Taffybar.WorkspaceHUD (
+  WWC(..),
   Workspace(..),
-  WorkspaceWidgetController(..),
   WorkspaceHUDConfig(..),
-  WorkspaceWidget(..),
-  buildWorkspaces,
+  WorkspaceContentsController(..),
+  WorkspaceWidgetController(..),
+  buildWorkspaceHUD,
   buildWorkspaceWidgets,
+  buildWorkspaces,
   getWorkspaceToWindows
 ) where
 
 import qualified Control.Concurrent.MVar as MV
+import           Control.Concurrent.STM.TVar
 import           Control.Monad
+import qualified Data.Char as S
 import qualified Data.Map as M
 import qualified Data.MultiMap as MM
 import qualified Graphics.UI.Gtk as Gtk
@@ -31,23 +35,13 @@ import           System.Information.EWMHDesktopInfo
 import           System.Taffybar.Pager
 import           Text.Printf
 
-data WorkspaceState = Active | Visible | Hidden | Empty | Urgent deriving (Show, Eq)
-
-data WindowInfo =
-  WindowInfo { windowTitle :: String
-             , windowClass :: String
-             , icons :: [EWMHIcon]
-             }
-
-getWindowInfo :: X11Window -> IO WindowInfo
-getWindowInfo w = withDefaultCtx $ do
-  wTitle <- getWindowTitle w
-  wClass <- getWindowClass w
-  wIcons <- getWindowIcons w
-  return $ WindowInfo { windowTitle = wTitle
-                      , windowClass = wClas
-                      , icons = wIcons
-                      }
+data WorkspaceState
+  = Active
+  | Visible
+  | Hidden
+  | Empty
+  | Urgent
+  deriving (Show, Eq)
 
 data Workspace =
   Workspace { workspaceIdx :: WorkspaceIdx
@@ -77,8 +71,27 @@ data WorkspaceContentsController = WorkspaceLabelController
   }
 
 instance WorkspaceWidgetController WorkspaceContentsController where
-  getWidget cc = Gtk.toWidget container cc
-  updateWidget cc workspace = return cc
+  getWidget cc = Gtk.toWidget $ container cc
+  updateWidget cc newWorkspace = do
+    let currentWorkspace = contentsWorkspace cc
+
+    when ((workspaceName currentWorkspace) /= (workspaceName newWorkspace)) $
+         Gtk.labelSetMarkup (label cc) (workspaceName newWorkspace)
+
+    newImages <-
+      if ((windowIds currentWorkspace) /= (windowIds newWorkspace))
+      then
+        updateImages cc newWorkspace
+      else
+        return $ images cc
+
+    return cc { contentsWorkspace = newWorkspace
+              , images = newImages
+              }
+
+updateImages :: WorkspaceContentsController -> Workspace -> IO [Gtk.Image]
+updateImages wcc ws = do
+  return $ images wcc
 
 data WorkspaceHUDConfig =
   WorkspaceHUDConfig
@@ -110,8 +123,8 @@ buildWorkspaces = do
   return $ foldl (\theMap (idx, name) ->
                     let windows = MM.lookup idx workspaceToWindows in
                     M.insert idx
-                     Workspace { workspaceIdx = idx
-                               , workspaceName = name
+                     Workspace { workspaceIdx = idx 
+                              , workspaceName = name
                                , workspaceState = getWorkspaceState idx windows
                                , windowIds = windows
                                } theMap) M.empty names
@@ -133,7 +146,7 @@ buildWorkspaceWidgets cfg pager container controllersRef = do
 
   MV.modifyMVar_ controllersRef $ const (return workspaceIDToController)
 
-  mapM_ (Gtk.containerAdd container . getWidget) $ elems workspaceIDToController
+  mapM_ (Gtk.containerAdd container . getWidget) $ M.elems workspaceIDToController
 
 buildWorkspaceHUD :: WorkspaceHUDConfig -> Pager -> IO Gtk.Widget
 buildWorkspaceHUD cfg pager = do
@@ -190,16 +203,16 @@ instance WorkspaceWidgetController WorkspaceButtonController
       newContents <- updateWidget (contentsController wbc) workspace
       return wbc { contentsController = newContents }
 
-buildButtonController :: WorkspaceHUDConfig ->
-                         Workspace ->
-                         (WorkspaceHUDConfig -> Workspace -> WWC) ->
-                         IO WorkspaceButtonController
-buildButtonController cfg workspace contentsBuilder =
+buildButtonController
+  :: WorkspaceHUDConfig
+  -> Workspace
+  -> (WorkspaceHUDConfig -> Workspace -> IO WWC)
+  -> IO WWC
+buildButtonController cfg workspace contentsBuilder = do
   ebox <- Gtk.eventBoxNew
-  cc <- contentsBuilder
-  contentsWidget <- getWidget cc
-  Gtk.containerAdd contents contentsWidget
-  return $ WorkspaceButtonController { button = ebox
+  cc <- contentsBuilder cfg workspace
+  Gtk.containerAdd ebox $ getWidget cc
+  return $ WWC WorkspaceButtonController { button = ebox
                                      , buttonWorkspace = workspace
                                      , contentsController = cc
                                      }
@@ -209,16 +222,17 @@ data UnderlineController =
                       -- XXX: An event box is used here because we need to
                       -- change the background
                       , underline :: Gtk.EventBox
-                      , contentsController :: WWC
+                      , overlineController :: WWC
                       }
 
 instance WorkspaceWidgetController UnderlineController
   where
     getWidget uc = Gtk.toWidget $ table uc
     updateWidget uc workspace = do
-      newContents <- updateWidget (contentsController uc) workspace
-      return uc { contentsController = newContents }
+      Gtk.widgetSetName (underline uc) $ getWidgetName workspace "underline"
+      newContents <- updateWidget (overlineController uc) workspace
+      return uc { overlineController = newContents }
 
 getWidgetName :: Workspace -> String -> String
 getWidgetName ws wname =
-  printf "Workspace-%s-%s-%s" wname (workspaceName ws) (workspaceState ws)
+  printf "Workspace-%s-%s-%s" wname (workspaceName ws) (map S.toLower $ show $ workspaceState ws)
