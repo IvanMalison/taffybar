@@ -76,8 +76,7 @@ instance WorkspaceWidgetController WWC where
     WWC <$> updateWidget wc workspace
 
 data WorkspaceContentsController = WorkspaceContentsController
-  -- XXX: An event box is used here because we need to change the background
-  { container :: Gtk.EventBox
+  { container :: Gtk.HBox
   , label :: Gtk.Label
   , images :: [Gtk.Image]
   , contentsWorkspace :: Workspace
@@ -87,9 +86,10 @@ data WorkspaceContentsController = WorkspaceContentsController
 buildContentsController :: WorkspaceHUDConfig -> Workspace -> IO WWC
 buildContentsController cfg ws = do
   lbl <- Gtk.labelNew (Nothing :: Maybe String)
-  ebox <- Gtk.eventBoxNew
+  hbox <- Gtk.hBoxNew False 0
+  Gtk.containerAdd hbox lbl
   let tempController =
-        WorkspaceContentsController { container = ebox
+        WorkspaceContentsController { container = hbox
                                     , label = lbl
                                     , images = []
                                     , contentsWorkspace =
@@ -134,23 +134,35 @@ updateImages wcc ws = do
   iconInfos_ <- mapM (getIconInfo (contentsConfig wcc)) $ windowIds ws
   -- XXX: Only one of the two things being zipped can be an infinite list, which
   -- is why this newImagesNeeded contortion is needed.
-  let iconInfos = if newImagesNeeded then iconInfos_
-                  else (iconInfos_ ++ repeat IINone)
+  let iconInfos =
+        if newImagesNeeded
+          then iconInfos_
+          else (iconInfos_ ++ repeat IINone)
+
+  putStrLn $
+    printf "Attempt to set %s icons for %s"
+      (show (length $ windowIds ws))
+      (show $ workspaceIdx ws)
+
   zipWithM setImageFromIO getImgs iconInfos
-    where
-      imgSize = windowIconSize $ contentsConfig wcc
-      preferCustom = False
-      setImageFromIO getImage iconInfo = do
-        img <- getImage
-        setImage imgSize preferCustom img iconInfo
-        return img
-      infiniteImages = (map return $ images wcc) ++ (repeat $ do
-        img <- Gtk.imageNew
-        Gtk.containerAdd (container wcc) img
-        return img)
-      newImagesNeeded = (length $ images wcc) < (length $ windowIds ws)
-      getImgs = if newImagesNeeded then infiniteImages
-                else (map return $ images wcc)
+  where
+    imgSize = windowIconSize $ contentsConfig wcc
+    preferCustom = False
+    setImageFromIO getImage iconInfo = do
+      img <- getImage
+      setImage imgSize preferCustom img iconInfo
+      return img
+    infiniteImages =
+      (map return $ images wcc) ++
+      (repeat $ do
+         img <- Gtk.imageNew
+         Gtk.containerAdd (container wcc) img
+         return img)
+    newImagesNeeded = (length $ images wcc) < (length $ windowIds ws)
+    getImgs =
+      if newImagesNeeded
+        then infiniteImages
+        else (map return $ images wcc)
 
 -- | Take the passed in pixbuf and ensure its scaled square.
 scalePixbuf :: Int -> Gtk.Pixbuf -> IO Gtk.Pixbuf
@@ -270,7 +282,14 @@ buildWorkspaceWidgets cfg cont controllersRef = do
 
   MV.modifyMVar_ controllersRef $ const (return workspaceIDToController)
 
-  mapM_ (Gtk.containerAdd cont . getWidget) $ M.elems workspaceIDToController
+  mapM_ addWidget $ M.elems workspaceIDToController
+  -- XXX: Does this belong somewhere else
+  Gtk.widgetShowAll cont
+    where addWidget controller =
+            do
+              let widget = getWidget controller
+              Gtk.containerAdd cont widget
+              Gtk.boxPackStart cont widget Gtk.PackNatural 0
 
 buildWorkspaceHUD :: WorkspaceHUDConfig -> Pager -> IO Gtk.Widget
 buildWorkspaceHUD cfg pager = do
@@ -325,6 +344,7 @@ instance WorkspaceWidgetController WorkspaceButtonController
     getWidget wbc = Gtk.toWidget $ button wbc
     updateWidget wbc workspace = do
       newContents <- updateWidget (contentsController wbc) workspace
+      updateMinSize 60 $ Gtk.toWidget $ button wbc
       return wbc { contentsController = newContents }
 
 buildButtonController
@@ -396,3 +416,9 @@ defaultWorkspaceHUDConfig =
                      , widgetGap = 0
                      , windowIconSize = 16
                      }
+
+updateMinSize :: Int -> Gtk.Widget -> IO ()
+updateMinSize minWidth widget = do
+  W.widgetSetSizeRequest widget (-1) (-1)
+  W.Requisition w _ <- W.widgetSizeRequest widget
+  when (w < minWidth) $ W.widgetSetSizeRequest widget minWidth  $ -1
