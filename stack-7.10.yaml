@@ -2,7 +2,7 @@ packages:
 - '.'
 extra-deps:
   - gtk-traymanager-0.1.6
-  - xmonad-contrib-0.12
+  - xmonad-contrib-0.13
   - X11-xft-0.3.1
   - gtk-0.13.9
 resolver: lts-6.26
