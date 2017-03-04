@@ -90,7 +90,7 @@ module System.Taffybar (
   -- >                        , manageHook = manageDocks
   -- >                        }
   --
-  -- The complexity is handled in the System.Tafftbar.XMonadLog
+  -- The complexity is handled in the System.Taffybar.XMonadLog
   -- module.  Note that manageDocks is required to have XMonad put
   -- taffybar in the strut space that it reserves.  If you have
   -- problems with taffybar appearing almost fullscreen, check to
@@ -277,7 +277,14 @@ taffybarMain cfg = do
   cssProviderLoadFromPath taffybarProvider =<< getDefaultConfigFile "taffybar.css"
   Just scr <- screenGetDefault
   styleContextAddProviderForScreen scr taffybarProvider 800
+
   _ <- initGUI
+
+  -- Load default and user gtk resources
+  defaultGtkConfig <- getDefaultConfigFile "taffybar.rc"
+  userGtkConfig <- getUserConfigFile "taffybar" "taffybar.rc"
+  rcParse defaultGtkConfig
+  rcParse userGtkConfig
 
   Just disp <- displayGetDefault
   nscreens <- displayGetNScreens disp
