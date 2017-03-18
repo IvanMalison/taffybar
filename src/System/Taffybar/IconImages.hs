@@ -58,7 +58,7 @@ pixBufFromEWMHIcon EWMHIcon {width = w, height = h, pixelsARGB = px} = do
       bytesPerPixel = 4
       rowStride = pixelsPerRow * bytesPerPixel
       bytesRGBA = pixelsARGBToBytesRGBA px
-  cPtr <- newArray $ map CUChar bytesRGBA
+  cPtr <- newArray bytesRGBA
   Gtk.pixbufNewFromData cPtr colorspace hasAlpha sampleBits w h rowStride
 
 -- | Create a pixbuf with the indicated RGBA color,
@@ -70,7 +70,7 @@ pixBufFromColor imgSize (r, g, b, a) = do
   return pixbuf
 
 -- | Convert a list of integer pixels to a bytestream with 4 channels.
-pixelsARGBToBytesRGBA :: [Int] -> [Word8]
+pixelsARGBToBytesRGBA :: [Int] -> [CUChar]
 pixelsARGBToBytesRGBA (x:xs) = r:g:b:a:pixelsARGBToBytesRGBA xs
   where b = toByte $ x
         g = toByte $ x `shift` (-8)

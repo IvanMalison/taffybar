@@ -337,7 +337,7 @@ setImageFromEWMHIcon img imgSize EWMHIcon {width=w, height=h, pixelsARGB=px} = d
       hasAlpha = True
       colorspace = Gtk.ColorspaceRgb
       bytesRGBA = pixelsARGBToBytesRGBA px
-  cPtr <- newArray $ map CUChar bytesRGBA
+  cPtr <- newArray bytesRGBA
   pixbuf <- Gtk.pixbufNewFromData cPtr colorspace hasAlpha sampleBits w h rowStride
   scaledPixbuf <- scalePixbuf imgSize pixbuf
   Gtk.imageSetFromPixbuf img scaledPixbuf
