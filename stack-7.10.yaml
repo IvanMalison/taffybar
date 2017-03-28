@@ -7,4 +7,4 @@ extra-deps:
   - xmonad-contrib-0.13
   - X11-xft-0.3.1
   - gtk-0.13.9
-resolver: lts-6.26
+resolver: nightly-2017-03-28
