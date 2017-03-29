@@ -52,7 +52,9 @@ import           Data.Time.Units
 import qualified Graphics.UI.Gtk as Gtk
 import qualified Graphics.UI.Gtk.Abstract.Widget as W
 import qualified Graphics.UI.Gtk.Layout.Table as T
-import           Graphics.X11.Xlib.Extras
+import           Graphics.X11.Xlib
+import           Graphics.X11.Xlib.Event
+import           Graphics.X11.Xlib.Extras hiding (xSetErrorHandler)
 import           Prelude
 import           System.IO.Error
 import           System.Information.EWMHDesktopInfo
@@ -109,10 +111,11 @@ type HUDIO a = ReaderT Context IO a
 retryGetX11Context :: IO X11Context
 retryGetX11Context = helper 0
   where helper retryCount = do
+          putStrLn "Getting X11Context"
           r <- tryJust (\e -> if isUserError e then Just e else Nothing) $ getDefaultCtx
           case r of
                Left e -> do
-                 putStrLn $ printf "Get deafault context failed %s times" $ show (retryCount + 1)
+                 putStrLn $ printf "Get default context failed %s times" $ show (retryCount + 1)
                  if retryCount < 5
                  then
                    helper (retryCount + 1)
@@ -127,6 +130,11 @@ safeRunHUDIO ctx task = do
   result <- runReaderT task $ ctx { x11Context = x11Ctx }
   closeDisplay (contextDisplay x11Ctx)
   return result
+
+handleBadWindow :: Display -> XErrorEventPtr -> IO ()
+handleBadWindow _ e = do
+  event <- getErrorEvent e
+  return ()
 
 liftX11 :: X11Property a -> HUDIO a
 liftX11 prop = do
@@ -167,6 +175,7 @@ data WorkspaceHUDConfig =
   , updateEvents :: [String]
   , updateRateLimitMicroseconds :: Integer
   , debugMode :: Bool
+  , handleX11Errors :: Bool
   , redrawIconsOnStateChange :: Bool
   , urgentWorkspaceState :: Bool
   , innerPadding :: Int
@@ -239,6 +248,7 @@ defaultWorkspaceHUDConfig =
     ]
   , updateRateLimitMicroseconds = 100000
   , debugMode = False
+  , handleX11Errors = True
   , redrawIconsOnStateChange = False
   , urgentWorkspaceState = False
   , innerPadding = 0
@@ -333,7 +343,6 @@ addWidgetsToTopLevel = do
   when (debugMode cfg) addDebugWidgets
   lift $ Gtk.widgetShowAll cont
 
-
 addWidget :: WWC -> HUDIO ()
 addWidget controller
  = do
@@ -397,14 +406,12 @@ buildWorkspaceHUD cfg pager = do
   controllersRef <- MV.newMVar M.empty
   workspacesRef <- MV.newMVar M.empty
   loggingRef <- MV.newMVar False
-  x11Ctx <- retryGetX11Context
   let context = Context { controllersVar = controllersRef
                         , workspacesVar = workspacesRef
                         , loggingVar = loggingRef
                         , hudWidget = cont
                         , hudConfig = cfg
                         , hudPager = pager
-                        , x11Context = x11Ctx
                         }
 
   -- This will actually create all the widgets
@@ -433,7 +440,8 @@ updateAllWorkspaceWidgets = do
         maybe (return controller)
               (updateWidget controller . WorkspaceUpdate) $
               M.lookup idx workspacesMap
-      logUpdateController i = hudLog $ printf "-Workspace- -each- Updating %s widget" $ show i
+      logUpdateController i =
+        hudLog $ printf "-Workspace- -each- Updating %s widget" $ show i
       updateController i cont = logUpdateController i >>
                                 updateController' i cont
 
