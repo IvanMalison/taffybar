@@ -19,7 +19,7 @@
 -----------------------------------------------------------------------------
 
 module System.Information.X11DesktopInfo
-  ( X11Context
+  ( X11Context(..)
   , X11Property
   , X11Window
   , withDefaultCtx
