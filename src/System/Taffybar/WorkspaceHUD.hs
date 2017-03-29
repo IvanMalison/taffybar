@@ -121,8 +121,12 @@ retryGetX11Context = helper 0
                Right x11Ctx -> return x11Ctx
 
 safeRunHUDIO :: Context -> HUDIO a -> IO a
-safeRunHUDIO ctx task = retryGetX11Context >>= fn
-  where fn x11Ctx = runReaderT task $ ctx { x11Context = x11Ctx }
+safeRunHUDIO ctx task = do
+  x11Ctx <- retryGetX11Context
+  setErrorHandler handleBadWindow
+  result <- runReaderT task $ ctx { x11Context = x11Ctx }
+  closeDisplay (contextDisplay x11Ctx)
+  return result
 
 liftX11 :: X11Property a -> HUDIO a
 liftX11 prop = do
