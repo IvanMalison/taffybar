@@ -56,6 +56,7 @@ import           Graphics.X11.Xlib
 import           Graphics.X11.Xlib.Event
 import           Graphics.X11.Xlib.Extras hiding (xSetErrorHandler)
 import           Prelude
+import           System.IO
 import           System.IO.Error
 import           System.Information.EWMHDesktopInfo
 import           System.Information.X11DesktopInfo
@@ -111,7 +112,7 @@ type HUDIO a = ReaderT Context IO a
 retryGetX11Context :: IO X11Context
 retryGetX11Context = helper 0
   where helper retryCount = do
-          putStrLn "Getting X11Context"
+          hFlush stdout
           r <- tryJust (\e -> if isUserError e then Just e else Nothing) $ getDefaultCtx
           case r of
                Left e -> do
