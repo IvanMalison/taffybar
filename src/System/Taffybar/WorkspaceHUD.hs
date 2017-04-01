@@ -53,7 +53,6 @@ import qualified Graphics.UI.Gtk as Gtk
 import qualified Graphics.UI.Gtk.Abstract.Widget as W
 import qualified Graphics.UI.Gtk.Layout.Table as T
 import           Graphics.X11.Xlib
-import           Graphics.X11.Xlib.Event
 import           Graphics.X11.Xlib.Extras hiding (xSetErrorHandler)
 import           Prelude
 import           System.IO
@@ -101,7 +100,7 @@ data Context =
   Context { controllersVar :: MV.MVar (M.Map WorkspaceIdx WWC)
           , workspacesVar :: MV.MVar (M.Map WorkspaceIdx Workspace)
           , loggingVar :: MV.MVar Bool
-          , x11Context :: X11Context
+          , x11ContextVar :: MV.MVar X11Context
           , hudWidget :: Gtk.HBox
           , hudConfig :: WorkspaceHUDConfig
           , hudPager :: Pager
@@ -109,38 +108,16 @@ data Context =
 
 type HUDIO a = ReaderT Context IO a
 
-retryGetX11Context :: IO X11Context
-retryGetX11Context = helper 0
-  where helper retryCount = do
-          hFlush stdout
-          r <- tryJust (\e -> if isUserError e then Just e else Nothing) $ getDefaultCtx
-          case r of
-               Left e -> do
-                 putStrLn $ printf "Get default context failed %s times" $ show (retryCount + 1)
-                 if retryCount < 5
-                 then
-                   helper (retryCount + 1)
-                 else
-                   throw e
-               Right x11Ctx -> return x11Ctx
-
 safeRunHUDIO :: Context -> HUDIO a -> IO a
 safeRunHUDIO ctx task = do
-  x11Ctx <- retryGetX11Context
-  setErrorHandler handleBadWindow
-  result <- runReaderT task $ ctx { x11Context = x11Ctx }
-  closeDisplay (contextDisplay x11Ctx)
+  result <- runReaderT task $ ctx
   return result
-
-handleBadWindow :: Display -> XErrorEventPtr -> IO ()
-handleBadWindow _ e = do
-  event <- getErrorEvent e
-  return ()
 
 liftX11 :: X11Property a -> HUDIO a
 liftX11 prop = do
   ctx <- ask
-  lift $ runReaderT prop $ x11Context ctx
+  x11Ctx <- lift $ MV.readMVar $ x11ContextVar ctx
+  lift $ runReaderT prop x11Ctx
 
 class WorkspaceWidgetController wc where
   updateWidget :: wc -> WidgetUpdate -> HUDIO wc
@@ -277,7 +254,7 @@ updateVar var modify = do
 updateWorkspacesVar :: HUDIO (M.Map WorkspaceIdx Workspace)
 updateWorkspacesVar = do
   workspacesRef <- asks workspacesVar
-  updateVar workspacesRef $ buildWorkspaces
+  updateVar workspacesRef buildWorkspaces
 
 getWorkspaceToWindows :: HUDIO (MM.MultiMap WorkspaceIdx X11Window)
 getWorkspaceToWindows = liftX11 $ getWindows >>=
@@ -345,10 +322,9 @@ addWidgetsToTopLevel = do
   lift $ Gtk.widgetShowAll cont
 
 addWidget :: WWC -> HUDIO ()
-addWidget controller
- = do
+addWidget controller = do
   cont <- asks hudWidget
-  let workspaceWidget = (getWidget controller)
+  let workspaceWidget = getWidget controller
   lift $ do
      -- XXX: This hbox exists to (hopefully) prevent the issue where workspace
      -- widgets appear out of order, in the switcher, by acting as an empty
@@ -407,9 +383,12 @@ buildWorkspaceHUD cfg pager = do
   controllersRef <- MV.newMVar M.empty
   workspacesRef <- MV.newMVar M.empty
   loggingRef <- MV.newMVar False
+  ctx <- getDefaultCtx
+  x11ContextRef <- MV.newMVar ctx
   let context = Context { controllersVar = controllersRef
                         , workspacesVar = workspacesRef
                         , loggingVar = loggingRef
+                        , x11ContextVar = x11ContextRef
                         , hudWidget = cont
                         , hudConfig = cfg
                         , hudPager = pager
@@ -709,7 +688,7 @@ updateImages wcc ws = do
           then infiniteImages
           else existingImages
       getImgs =
-        case maxIcons $ cfg of
+        case maxIcons cfg of
           Just theMax -> take theMax imgSrcs
           Nothing -> imgSrcs
   -- XXX: Only one of the two things being zipped can be an infinite list, which
@@ -771,7 +750,7 @@ updateIconWidget _ IconWidget { iconContainer = iconButton
         case windowData of
           Just dat -> getIconInfo cfg dat
           Nothing -> return IINone
-      let imgSize = windowIconSize $ cfg
+      let imgSize = windowIconSize cfg
           urgentStr =
             if maybe False windowUrgent windowData
               then "urgent"
@@ -881,7 +860,7 @@ buildUnderlineController contentsBuilder workspace = do
 instance WorkspaceWidgetController WorkspaceUnderlineController where
   getWidget uc = Gtk.toWidget $ table uc
   updateWidget uc wu@(WorkspaceUpdate workspace) =
-    (lift $ Gtk.widgetSetName (underline uc) (getWidgetName workspace "underline")) >>
+    lift (Gtk.widgetSetName (underline uc) (getWidgetName workspace "underline")) >>
     updateUnderline uc wu
   updateWidget a b = updateUnderline a b
 
