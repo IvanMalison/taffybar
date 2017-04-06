@@ -37,7 +37,6 @@ module System.Taffybar.WorkspaceHUD (
 import           Control.Applicative
 import           Control.Concurrent
 import qualified Control.Concurrent.MVar as MV
-import           Control.Exception
 import           Control.Monad
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
@@ -52,11 +51,8 @@ import           Data.Time.Units
 import qualified Graphics.UI.Gtk as Gtk
 import qualified Graphics.UI.Gtk.Abstract.Widget as W
 import qualified Graphics.UI.Gtk.Layout.Table as T
-import           Graphics.X11.Xlib
 import           Graphics.X11.Xlib.Extras hiding (xSetErrorHandler)
 import           Prelude
-import           System.IO
-import           System.IO.Error
 import           System.Information.EWMHDesktopInfo
 import           System.Information.X11DesktopInfo
 import           System.Taffybar.IconImages
@@ -109,9 +105,7 @@ data Context =
 type HUDIO a = ReaderT Context IO a
 
 safeRunHUDIO :: Context -> HUDIO a -> IO a
-safeRunHUDIO ctx task = do
-  result <- runReaderT task $ ctx
-  return result
+safeRunHUDIO ctx task = runReaderT task ctx
 
 liftX11 :: X11Property a -> HUDIO a
 liftX11 prop = do
@@ -677,9 +671,9 @@ updateImages wcc ws = do
       infiniteImages =
         existingImages ++
         repeat
-          (lift $ do iw <- buildIconWidget ws
-                     Gtk.containerAdd (container wcc) $ iconContainer iw
-                     return iw)
+          (do iw <- buildIconWidget ws
+              lift $ Gtk.containerAdd (container wcc) $ iconContainer iw
+              return iw)
       windowCount = length $ windows ws
       maxNeeded = maybe windowCount (min windowCount) $ maxIcons cfg
       newImagesNeeded = length existingImages < max (minIcons cfg) maxNeeded
@@ -705,20 +699,22 @@ updateImages wcc ws = do
   when newImagesNeeded $ lift $ Gtk.widgetShowAll $ container wcc
   return newImgs
 
-buildIconWidget :: Workspace -> IO IconWidget
+buildIconWidget :: Workspace -> HUDIO IconWidget
 buildIconWidget ws = do
-  img <- Gtk.imageNew
-  ebox <- Gtk.eventBoxNew
-  windowVar <- MV.newMVar Nothing
-  Gtk.containerAdd ebox img
-  _ <- Gtk.on ebox Gtk.buttonPressEvent $ liftIO $ do
-                    info <- MV.readMVar windowVar
-                    case info of
-                      Just updatedInfo ->
-                        withDefaultCtx $ focusWindow $ windowId updatedInfo
-                      _ -> liftIO $ void $ switch (workspaceIdx ws)
-                    return True
-  return IconWidget { iconContainer = ebox
+  ctx <- ask
+  lift $ do
+    img <- Gtk.imageNew
+    ebox <- Gtk.eventBoxNew
+    windowVar <- MV.newMVar Nothing
+    Gtk.containerAdd ebox img
+    _ <- Gtk.on ebox Gtk.buttonPressEvent $ liftIO $ do
+                       info <- MV.readMVar windowVar
+                       case info of
+                         Just updatedInfo ->
+                           safeRunHUDIO ctx $ liftX11 $ focusWindow $ windowId updatedInfo
+                         _ -> liftIO $ void $ switch (workspaceIdx ws)
+                       return True
+    return IconWidget { iconContainer = ebox
                     , iconImage = img
                     , iconWindow = windowVar
                     }
@@ -731,9 +727,9 @@ updateIconWidget
   -> Bool
   -> HUDIO ()
 updateIconWidget _ IconWidget { iconContainer = iconButton
-                                , iconImage = image
-                                , iconWindow = windowRef
-                                } windowData forceUpdate transparentOnNone = do
+                              , iconImage = image
+                              , iconWindow = windowRef
+                              } windowData forceUpdate transparentOnNone = do
   cfg <- asks hudConfig
   void $ updateVar windowRef $ \currentData ->
     let requireFullEqualityForSkip = updateIconsOnTitleChange cfg
@@ -798,6 +794,7 @@ buildButtonController :: ParentControllerConstructor
 buildButtonController contentsBuilder workspace = do
   cc <- contentsBuilder workspace
   workspacesRef <- asks workspacesVar
+  ctx <- ask
   lift $ do
     ebox <- Gtk.eventBoxNew
     Gtk.containerAdd ebox $ getWidget cc
@@ -806,8 +803,7 @@ buildButtonController contentsBuilder workspace = do
       Gtk.on ebox Gtk.scrollEvent $ do
         workspaces <- liftIO $ MV.readMVar workspacesRef
         let switchOne a =
-              liftIO $
-              withDefaultCtx $
+              liftIO $ safeRunHUDIO ctx $ liftX11 $
               switchOneWorkspace a (length (M.toList workspaces) - 1) >>
               return True
         dir <- Gtk.eventScrollDirection
@@ -816,15 +812,15 @@ buildButtonController contentsBuilder workspace = do
           Gtk.ScrollLeft -> switchOne True
           Gtk.ScrollDown -> switchOne False
           Gtk.ScrollRight -> switchOne False
-    _ <- Gtk.on ebox Gtk.buttonPressEvent $ switch $ workspaceIdx workspace
+    _ <- Gtk.on ebox Gtk.buttonPressEvent $ switch ctx $ workspaceIdx workspace
     return $
            WWC
            WorkspaceButtonController
            {button = ebox, buttonWorkspace = workspace, contentsController = cc}
 
-switch :: (MonadIO m) => WorkspaceIdx -> m Bool
-switch idx = do
-  liftIO $ withDefaultCtx (switchToWorkspace idx)
+switch :: Context -> (MonadIO m) => WorkspaceIdx -> m Bool
+switch ctx idx = do
+  liftIO $ safeRunHUDIO ctx $ liftX11 $ switchToWorkspace idx
   return True
 
 instance WorkspaceWidgetController WorkspaceButtonController
