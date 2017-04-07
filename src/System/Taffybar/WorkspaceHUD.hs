@@ -96,7 +96,6 @@ data Context =
   Context { controllersVar :: MV.MVar (M.Map WorkspaceIdx WWC)
           , workspacesVar :: MV.MVar (M.Map WorkspaceIdx Workspace)
           , loggingVar :: MV.MVar Bool
-          , x11ContextVar :: MV.MVar X11Context
           , hudWidget :: Gtk.HBox
           , hudConfig :: WorkspaceHUDConfig
           , hudPager :: Pager
@@ -104,14 +103,11 @@ data Context =
 
 type HUDIO a = ReaderT Context IO a
 
-safeRunHUDIO :: Context -> HUDIO a -> IO a
-safeRunHUDIO ctx task = runReaderT task ctx
+liftPager :: PagerIO a -> HUDIO a
+liftPager action = asks hudPager >>= lift . runReaderT action
 
 liftX11 :: X11Property a -> HUDIO a
-liftX11 prop = do
-  ctx <- ask
-  x11Ctx <- lift $ MV.readMVar $ x11ContextVar ctx
-  lift $ runReaderT prop x11Ctx
+liftX11 = liftPager . liftPagerX11
 
 class WorkspaceWidgetController wc where
   updateWidget :: wc -> WidgetUpdate -> HUDIO wc
@@ -359,9 +355,7 @@ addDebugWidgets = do
         rebuildBar
          = do
           Gtk.containerForeach cont (Gtk.containerRemove cont)
-          safeRunHUDIO ctx $ do
-            addWidgetsToTopLevel
-            updateAllWorkspaceWidgets
+          runReaderT (addWidgetsToTopLevel >> updateAllWorkspaceWidgets) ctx
           return True
     Gtk.containerAdd enableLoggingBox logLabel
     Gtk.containerAdd rebuildBarBox rebuildLabel
@@ -377,19 +371,16 @@ buildWorkspaceHUD cfg pager = do
   controllersRef <- MV.newMVar M.empty
   workspacesRef <- MV.newMVar M.empty
   loggingRef <- MV.newMVar False
-  ctx <- getDefaultCtx
-  x11ContextRef <- MV.newMVar ctx
   let context = Context { controllersVar = controllersRef
                         , workspacesVar = workspacesRef
                         , loggingVar = loggingRef
-                        , x11ContextVar = x11ContextRef
                         , hudWidget = cont
                         , hudConfig = cfg
                         , hudPager = pager
                         }
 
   -- This will actually create all the widgets
-  safeRunHUDIO context updateAllWorkspaceWidgets
+  runReaderT updateAllWorkspaceWidgets context
 
   updateHandler <- onWorkspaceUpdate context
   mapM_ (subscribe pager updateHandler) $ updateEvents cfg
@@ -506,7 +497,7 @@ onWorkspaceUpdate context = do
   return withLog
   where
     combineRequests _ b = Just (b, const ((), ()))
-    doUpdate _ = Gtk.postGUIAsync $ safeRunHUDIO context updateAllWorkspaceWidgets
+    doUpdate _ = Gtk.postGUIAsync $ runReaderT updateAllWorkspaceWidgets context
 
 onIconChanged :: Context -> (Set.Set X11Window -> IO ()) -> Event -> IO ()
 onIconChanged context handler event = do
@@ -525,7 +516,7 @@ onIconsChanged context =
       Just (Set.union windows1 windows2, const ((), ()))
     onIconsChanged' wids = do
       hudLogger context $ printf "-Icon- -Execute- %s" $ show wids
-      safeRunHUDIO context $ doWidgetUpdate
+      flip runReaderT context $ doWidgetUpdate
                      (\idx c ->
                         hudLog (printf "-Icon- -each- Updating %s icons." $ show idx) >>
                                updateWidget c (IconUpdate $ Set.toList wids))
@@ -711,8 +702,8 @@ buildIconWidget ws = do
                        info <- MV.readMVar windowVar
                        case info of
                          Just updatedInfo ->
-                           safeRunHUDIO ctx $ liftX11 $ focusWindow $ windowId updatedInfo
-                         _ -> liftIO $ void $ switch (workspaceIdx ws)
+                           flip runReaderT ctx $ liftX11 $ focusWindow $ windowId updatedInfo
+                         _ -> liftIO $ void $ switch ctx (workspaceIdx ws)
                        return True
     return IconWidget { iconContainer = ebox
                     , iconImage = img
@@ -803,7 +794,7 @@ buildButtonController contentsBuilder workspace = do
       Gtk.on ebox Gtk.scrollEvent $ do
         workspaces <- liftIO $ MV.readMVar workspacesRef
         let switchOne a =
-              liftIO $ safeRunHUDIO ctx $ liftX11 $
+              liftIO $ flip runReaderT ctx $ liftX11 $
               switchOneWorkspace a (length (M.toList workspaces) - 1) >>
               return True
         dir <- Gtk.eventScrollDirection
@@ -818,9 +809,9 @@ buildButtonController contentsBuilder workspace = do
            WorkspaceButtonController
            {button = ebox, buttonWorkspace = workspace, contentsController = cc}
 
-switch :: Context -> (MonadIO m) => WorkspaceIdx -> m Bool
+switch :: (MonadIO m) => Context -> WorkspaceIdx -> m Bool
 switch ctx idx = do
-  liftIO $ safeRunHUDIO ctx $ liftX11 $ switchToWorkspace idx
+  liftIO $ flip runReaderT ctx $ liftX11 $ switchToWorkspace idx
   return True
 
 instance WorkspaceWidgetController WorkspaceButtonController
