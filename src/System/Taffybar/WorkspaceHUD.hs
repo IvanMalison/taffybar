@@ -258,19 +258,19 @@ getUrgentWindows :: X11Property [X11Window]
 getUrgentWindows = getWindows >>= filterM isWindowUrgent
 
 getWindowData :: [X11Window] -> X11Window -> X11Property WindowData
-getWindowData urgentWindows window =
-  do
-    wTitle <- getWindowTitle window
-    wClass <- getWindowClass window
-    return
-      WindowData
-      { windowId = window
-      , windowTitle = wTitle
-      , windowClass = wClass
-      , windowUrgent = window `elem` urgentWindows
-      }
+getWindowData urgentWindows window = do
+  wTitle <- getWindowTitle window
+  wClass <- getWindowClass window
+  return
+    WindowData
+    { windowId = window
+    , windowTitle = wTitle
+    , windowClass = wClass
+    , windowUrgent = window `elem` urgentWindows
+    }
 
-buildWorkspaces :: M.Map WorkspaceIdx Workspace -> HUDIO (M.Map WorkspaceIdx Workspace)
+buildWorkspaces :: M.Map WorkspaceIdx Workspace
+                -> HUDIO (M.Map WorkspaceIdx Workspace)
 buildWorkspaces _ = do
   context <- ask
 
@@ -281,7 +281,8 @@ buildWorkspaces _ = do
 
   let
     getWorkspaceState idx ws
-        | urgentWorkspaceState (hudConfig context) && not (null urgentWindows) = Urgent
+        | urgentWorkspaceState (hudConfig context) &&
+          not (null urgentWindows) = Urgent
         | idx == active = Active
         | idx `elem` visible = Visible
         | null ws = Empty
@@ -516,10 +517,11 @@ onIconsChanged context =
       Just (Set.union windows1 windows2, const ((), ()))
     onIconsChanged' wids = do
       hudLogger context $ printf "-Icon- -Execute- %s" $ show wids
-      flip runReaderT context $ doWidgetUpdate
-                     (\idx c ->
-                        hudLog (printf "-Icon- -each- Updating %s icons." $ show idx) >>
-                               updateWidget c (IconUpdate $ Set.toList wids))
+      flip runReaderT context $
+        doWidgetUpdate
+          (\idx c ->
+             hudLog (printf "-Icon- -each- Updating %s icons." $ show idx) >>
+             updateWidget c (IconUpdate $ Set.toList wids))
 
 data IconWidget = IconWidget { iconContainer :: Gtk.EventBox
                              , iconImage :: Gtk.Image
@@ -698,17 +700,17 @@ buildIconWidget ws = do
     ebox <- Gtk.eventBoxNew
     windowVar <- MV.newMVar Nothing
     Gtk.containerAdd ebox img
-    _ <- Gtk.on ebox Gtk.buttonPressEvent $ liftIO $ do
-                       info <- MV.readMVar windowVar
-                       case info of
-                         Just updatedInfo ->
-                           flip runReaderT ctx $ liftX11 $ focusWindow $ windowId updatedInfo
-                         _ -> liftIO $ void $ switch ctx (workspaceIdx ws)
-                       return True
-    return IconWidget { iconContainer = ebox
-                    , iconImage = img
-                    , iconWindow = windowVar
-                    }
+    _ <-
+      Gtk.on ebox Gtk.buttonPressEvent $
+      liftIO $ do
+        info <- MV.readMVar windowVar
+        case info of
+          Just updatedInfo ->
+            flip runReaderT ctx $ liftX11 $ focusWindow $ windowId updatedInfo
+          _ -> liftIO $ void $ switch ctx (workspaceIdx ws)
+        return True
+    return
+      IconWidget {iconContainer = ebox, iconImage = img, iconWindow = windowVar}
 
 updateIconWidget
   :: WorkspaceContentsController
@@ -838,8 +840,10 @@ buildUnderlineController contentsBuilder workspace = do
     u <- Gtk.eventBoxNew
     W.widgetSetSizeRequest u (-1) $ underlineHeight cfg
 
-    T.tableAttach t (getWidget cc) 0 1 0 1 [T.Expand, T.Fill] [T.Expand, T.Fill] 0 0
-    T.tableAttach t u 0 1 1 2 [T.Fill] [T.Shrink] (underlinePadding cfg) 0
+    T.tableAttach t (getWidget cc) 0 1 0 1
+       [T.Expand, T.Fill] [T.Expand, T.Fill] 0 0
+    T.tableAttach t u 0 1 1 2
+       [T.Fill] [T.Shrink] (underlinePadding cfg) 0
 
     return $ WWC WorkspaceUnderlineController
       {table = t, underline = u, overlineController = cc}
@@ -847,8 +851,9 @@ buildUnderlineController contentsBuilder workspace = do
 instance WorkspaceWidgetController WorkspaceUnderlineController where
   getWidget uc = Gtk.toWidget $ table uc
   updateWidget uc wu@(WorkspaceUpdate workspace) =
-    lift (Gtk.widgetSetName (underline uc) (getWidgetName workspace "underline")) >>
-    updateUnderline uc wu
+    let widgetName = getWidgetName workspace "underline"
+        setWidgetName = Gtk.widgetSetName (underline uc) widgetName
+    in lift setWidgetName >> updateUnderline uc wu
   updateWidget a b = updateUnderline a b
 
 updateUnderline :: WorkspaceUnderlineController
@@ -883,9 +888,11 @@ buildBorderController contentsBuilder workspace = do
 instance WorkspaceWidgetController WorkspaceBorderController where
   getWidget bc = Gtk.toWidget $ border bc
   updateWidget bc wu@(WorkspaceUpdate workspace) =
-    lift (Gtk.widgetSetName (border bc) (getWidgetName workspace "Border") >>
-          Gtk.widgetSetName (borderContents bc)
-               (getWidgetName workspace "Container")) >> updateBorder bc wu
+    let setBorderName = Gtk.widgetSetName (border bc) $
+                        getWidgetName workspace "Border"
+        setContentsName = Gtk.widgetSetName (borderContents bc) $
+                          getWidgetName workspace "Container"
+    in (lift $ setBorderName >> setContentsName) >> updateBorder bc wu
   updateWidget a b = updateBorder a b
 
 updateBorder :: WorkspaceBorderController
