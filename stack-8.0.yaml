@@ -1,5 +1,9 @@
 packages:
 - '.'
+- location:
+    git: git@github.com:willdonnelly/dyre.git
+    commit: 11412752b483135e0c151ab90be17b217f837c4b
+  extra-dep: true
 extra-deps:
   - time-units-1.0.0
   - rate-limit-1.1.1
