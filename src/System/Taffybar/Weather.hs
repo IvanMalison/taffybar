@@ -113,7 +113,7 @@ pTime = do
   _ <- char ' '
   (h:hh:mi:mimi) <- getNumbersAsString
   _ <- char ' '
-  return (y, m, d ,([h]++[hh]++":"++[mi]++mimi))
+  return (y, m, d , [h]++[hh]++":"++[mi]++mimi)
 
 pTemp :: Parser (Int, Int)
 pTemp = do
@@ -122,11 +122,11 @@ pTemp = do
   _ <- manyTill anyChar $ char '('
   c <- manyTill num $ char ' '
   _ <- skipRestOfLine
-  return $ (floor (read c :: Double), floor (read f :: Double))
+  return (floor (read c :: Double), floor (read f :: Double))
 
 pRh :: Parser Int
 pRh = do
-  s <- manyTill digit $ (char '%' <|> char '.')
+  s <- manyTill digit $ char '%' <|> char '.'
   return $ read s
 
 pPressure :: Parser Int
@@ -165,8 +165,7 @@ getAfterString s = pAfter <|> return ("<" ++ s ++ " not found!>")
   where
     pAfter = do
       _ <- try $ manyTill skipRestOfLine $ string s
-      v <- manyTill anyChar $ newline
-      return v
+      manyTill anyChar newline
 
 skipTillString :: String -> Parser String
 skipTillString s =
@@ -180,7 +179,6 @@ skipRestOfLine :: Parser Char
 skipRestOfLine = do
   _ <- many $ noneOf "\n\r"
   newline
-
 
 -- | Simple: download the document at a URL.  Taken from Real World
 -- Haskell.
@@ -264,7 +262,7 @@ data WeatherFormatter = WeatherFormatter (WeatherInfo -> String) -- ^ Specify a 
 -- provide a custom function to turn a 'WeatherInfo' into a String via the
 -- 'weatherFormatter' field.
 data WeatherConfig =
-  WeatherConfig { weatherStation         :: String   -- ^ The weather station to poll. No default
+  WeatherConfig { weatherStation         :: String  -- ^ The weather station to poll. No default
                 , weatherTemplate        :: String  -- ^ Template string, as described above.  Default: $tempF$ °F
                 , weatherTemplateTooltip :: String  -- ^ Template string, as described above.  Default: $tempF$ °F
                 , weatherFormatter       :: WeatherFormatter -- ^ Default: substitute in all interpolated variables (above)
