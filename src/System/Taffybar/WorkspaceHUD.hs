@@ -305,14 +305,18 @@ updateWorkspacesVar = do
   workspacesRef <- asks workspacesVar
   updateVar workspacesRef buildWorkspaces
 
-getWorkspaceToWindows :: [X11Window] -> X11Property (MM.MultiMap WorkspaceIdx X11Window)
+getWorkspaceToWindows :: [X11Window]
+                      -> X11Property (MM.MultiMap WorkspaceIdx X11Window)
 getWorkspaceToWindows =
   foldM
     (\theMap window ->
        MM.insert <$> getWorkspace window <*> pure window <*> pure theMap)
     MM.empty
 
-getWindowData :: [X11Window] -> [X11Window] -> X11Window -> X11Property WindowData
+getWindowData :: [X11Window]
+              -> [X11Window]
+              -> X11Window
+              -> X11Property WindowData
 getWindowData activeWindows urgentWindows window = do
   wTitle <- getWindowTitle window
   wClass <- getWindowClass window
@@ -714,7 +718,8 @@ updateMinSize widget minWidth = do
 
 defaultGetIconInfo :: WindowData -> HUDIO IconInfo
 defaultGetIconInfo w = do
-  icons <- liftX11Def [] $ postX11RequestSyncProp (getWindowIcons $ windowId w) []
+  icons <-
+    liftX11Def [] $ postX11RequestSyncProp (getWindowIcons $ windowId w) []
   iconSize <- asks $ windowIconSize . hudConfig
   return $
     if null icons
@@ -727,9 +732,10 @@ forkM a b = sequenceT . (a &&& b)
 sortWindowsByPosition :: [WindowData] -> HUDIO [WindowData]
 sortWindowsByPosition wins = do
   let getGeometryHUD w = getDisplay >>= liftIO . (`safeGetGeometry` w)
-      getGeometries = mapM
-                      (forkM return ((((sel2 &&& sel3) <$>) .) getGeometryHUD) . windowId)
-                      wins
+      getGeometries =
+        mapM
+          (forkM return ((((sel2 &&& sel3) <$>) .) getGeometryHUD) . windowId)
+          wins
   windowGeometries <- liftX11Def [] getGeometries
   let getLeftPos wd =
         fromMaybe (999999999, 99999999) $ lookup (windowId wd) windowGeometries
