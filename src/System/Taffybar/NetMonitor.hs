@@ -51,12 +51,15 @@ netMonitorNew interval interface = netMonitorMultiNew interval [interface]
 -- The format template currently supports three units: bytes,
 -- kilobytes, and megabytes.  Automatic intelligent unit selection is
 -- planned, eventually.
-netMonitorNewWith :: Double -- ^ Polling interval (in seconds, e.g. 1.5)
-                  -> String -- ^ Name of the network interface to monitor (e.g. \"eth0\", \"wlan1\")
-                  -> Int -- ^ Precision for an output
-                  -> String -- ^ Template for an output. You can use variables: $inB$, $inKB$, $inMB$, $outB$, $outKB$, $outMB$
-                  -> IO Widget
-netMonitorNewWith interval interface prec template = netMonitorMultiNewWith interval [interface] prec template
+netMonitorNewWith
+  :: Double -- ^ Polling interval (in seconds, e.g. 1.5)
+  -> String -- ^ Name of the network interface to monitor (e.g. \"eth0\", \"wlan1\")
+  -> Int -- ^ Precision for an output
+  -- | Template for an output. You can use variables: $inB$, $inKB$, $inMB$,
+  -- $outB$, $outKB$, $outMB$
+  -> String
+  -> IO Widget
+netMonitorNewWith interval interface = netMonitorMultiNewWith interval [interface]
 
 -- | Like `netMonitorNew` but allows specification of multiple interfaces.
 --   Interfaces are allowed to not exist at all (e.g. unplugged usb ethernet),
@@ -66,14 +69,18 @@ netMonitorNewWith interval interface prec template = netMonitorMultiNewWith inte
 netMonitorMultiNew :: Double -- ^ Polling interval (in seconds, e.g. 1.5)
               -> [String] -- ^ Name of the network interfaces to monitor (e.g. \"eth0\", \"wlan1\")
               -> IO Widget
-netMonitorMultiNew interval interfaces = netMonitorMultiNewWith interval interfaces 2 defaultNetFormat
+netMonitorMultiNew interval interfaces =
+  netMonitorMultiNewWith interval interfaces 2 defaultNetFormat
 
 -- | Like `newMonitorNewWith` but for multiple interfaces.
-netMonitorMultiNewWith :: Double -- ^ Polling interval (in seconds, e.g. 1.5)
-                  -> [String] -- ^ Name of the network interfaces to monitor (e.g. \"eth0\", \"wlan1\")
-                  -> Int -- ^ Precision for an output
-                  -> String -- ^ Template for an output. You can use variables: $inB$, $inKB$, $inMB$, $outB$, $outKB$, $outMB$
-                  -> IO Widget
+netMonitorMultiNewWith
+  :: Double -- ^ Polling interval (in seconds, e.g. 1.5)
+  -> [String] -- ^ Name of the network interfaces to monitor (e.g. \"eth0\", \"wlan1\")
+  -> Int -- ^ Precision for an output
+  -- | Template for an output. You can use variables: $inB$, $inKB$, $inMB$,
+  -- $outB$, $outKB$, $outMB$
+  -> String
+  -> IO Widget
 netMonitorMultiNewWith interval interfaces prec template = do
   interfaceRefs <- T.forM interfaces $ \i -> (i,) <$> newIORef (0, 0)
   let showResult = showInfo template prec <$> calculateNetUse interfaceRefs
@@ -118,7 +125,7 @@ toMB :: Int -> Double -> String
 toMB prec = setDigits prec . (/ (1024 * 1024))
 
 setDigits :: Int -> Double -> String
-setDigits dig a = printf format a
+setDigits dig = printf format
     where format = "%." ++ show dig ++ "f"
 
 

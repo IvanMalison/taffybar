@@ -85,7 +85,7 @@ nextNotification :: NotifyState -> STM ()
 nextNotification s = do
   q <- readTVar (noteQueue s)
   case viewl q of
-    EmptyL -> do
+    EmptyL ->
       writeTVar (noteCurrent s) Nothing
     next :< rest -> do
       writeTVar (noteQueue s) rest
@@ -248,10 +248,16 @@ data NotificationConfig =
 defaultFormatter :: Notification -> String
 defaultFormatter note = msg
   where
-    msg = case T.null (noteBody note) of
-      True -> T.unpack $ noteSummary note
-      False -> T.unpack $ mconcat [ "<span fgcolor='yellow'>Note:</span>"
-                                  , noteSummary note, ": ", noteBody note ]
+    msg =
+      if T.null (noteBody note)
+        then T.unpack $ noteSummary note
+        else T.unpack $
+             mconcat
+               [ "<span fgcolor='yellow'>Note:</span>"
+               , noteSummary note
+               , ": "
+               , noteBody note
+               ]
 
 -- | The default formatter is one of
 --
