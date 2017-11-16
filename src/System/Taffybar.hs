@@ -471,11 +471,11 @@ taffybarMain cfg = do
 
   _ <- on screen screenMonitorsChanged refreshTaffyWindows
 
-  startRefresher cfg $ postGUIAsync refreshTaffyWindows
+  let refresh = postGUIAsync refreshTaffyWindows
 
-  refreshTaffyWindows
-  -- Reset the size of the Taffybar window if the monitor setup has
-  -- changed, e.g., after a laptop user has attached an external
-  -- monitor.
+  startRefresher cfg refresh
+
+  refresh
+
   mainGUI
   return ()

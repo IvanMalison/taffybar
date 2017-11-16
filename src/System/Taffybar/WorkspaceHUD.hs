@@ -70,6 +70,7 @@ import qualified Graphics.UI.Gtk as Gtk
 import qualified Graphics.UI.Gtk.Abstract.Widget as W
 import           Graphics.UI.Gtk.General.StyleContext
 import qualified Graphics.UI.Gtk.Layout.Table as T
+import qualified Graphics.UI.Gtk.Abstract.Misc as Misc
 import           Graphics.X11.Xlib.Extras
        hiding (rawGetWindowProperty, getWindowProperty8,
                getWindowProperty16, getWindowProperty32, xSetErrorHandler)
@@ -190,7 +191,7 @@ data WorkspaceHUDConfig =
   , underlinePadding :: Int
   , maxIcons :: Maybe Int
   , minIcons :: Int
-  , getIconInfo :: WindowData -> HUDIO IconInfo
+  , getIconInfo :: WindowData -> Int -> HUDIO IconInfo
   , labelSetter :: Workspace -> HUDIO String
   , updateOnWMIconChange :: Bool
   , showWorkspaceFn :: Workspace -> Bool
@@ -256,11 +257,11 @@ hudFromPagerConfig pagerConfig =
 
 windowTitleClassIconGetter
   :: (Bool -> String -> String -> IconInfo)
-  -> (WindowData -> HUDIO IconInfo)
+  -> (WindowData -> Int -> HUDIO IconInfo)
 windowTitleClassIconGetter customIconF = fn
   where
-    fn w@WindowData {windowTitle = wTitle, windowClass = wClass} = do
-      ewmhIcon <- defaultGetIconInfo w
+    fn w@WindowData {windowTitle = wTitle, windowClass = wClass} iconSize = do
+      ewmhIcon <- defaultGetIconInfo w iconSize
       let hasEwmhIcon = ewmhIcon /= IINone
           custIcon = customIconF hasEwmhIcon wTitle wClass
           hasCustomIcon = custIcon /= IINone
@@ -303,7 +304,7 @@ hudLogger :: Context -> String -> IO ()
 hudLogger ctx txt =
   do
     shouldLog <- MV.readMVar $ loggingVar ctx
-    when shouldLog $ putStrLn txt
+    when (shouldLog || True) $ putStrLn txt
 
 hudLog :: String -> HUDIO ()
 hudLog txt = ask >>= lift . flip hudLogger (printf "[WorkspaceHUD] %s" txt)
@@ -487,6 +488,7 @@ updateAllWorkspaceWidgets = do
       updateController i cont = logUpdateController i >>
                                 updateController' i cont
 
+  hudLog "-Workspace- Updating widgets..."
   doWidgetUpdate updateController
 
   hudLog "-Workspace- Showing and hiding controllers..."
@@ -538,7 +540,10 @@ updateWorkspaceControllers = do
   when (existingWorkspacesSet /= newWorkspacesSet) $ do
     let addWorkspaces = Set.difference newWorkspacesSet existingWorkspacesSet
         removeWorkspaces = Set.difference existingWorkspacesSet newWorkspacesSet
-        builder = widgetBuilder cfg
+        builder workspace = hudLog (show workspace) >> widgetBuilder cfg workspace
+
+    hudLog $ printf "-Workspace- Adding %s..." $ show addWorkspaces
+    hudLog $ printf "-Workspace- Removing %s..." $ show removeWorkspaces
 
     _ <- updateVar controllersRef $ \controllers -> do
       let oldRemoved = F.foldl (flip M.delete) controllers removeWorkspaces
@@ -548,6 +553,7 @@ updateWorkspaceControllers = do
                     (buildController idx)
       foldM buildAndAddController oldRemoved $ Set.toList addWorkspaces
 
+    hudLog "-Workspace- Repopulating container..."
     -- Clear the container and repopulate it
     lift $ Gtk.containerForeach cont (Gtk.containerRemove cont)
     addWidgetsToTopLevel
@@ -720,10 +726,9 @@ updateMinSize widget minWidth = do
   W.Requisition w _ <- W.widgetSizeRequest widget
   when (w < minWidth) $ W.widgetSetSizeRequest widget minWidth  $ -1
 
-defaultGetIconInfo :: WindowData -> HUDIO IconInfo
-defaultGetIconInfo w = do
+defaultGetIconInfo :: WindowData -> Int -> HUDIO IconInfo
+defaultGetIconInfo w iconSize = do
   icons <- liftX11Def [] $ postX11RequestSyncProp (getWindowIcons $ windowId w) []
-  iconSize <- asks $ windowIconSize . hudConfig
   return $
     if null icons
       then IINone
@@ -827,12 +832,23 @@ updateIconWidget _ IconWidget
                    , iconImage = image
                    , iconWindow = windowRef
                    } windowData forceUpdate transparentOnNone = do
+  c <- ask
   cfg <- asks hudConfig
-
+  hudLog $ printf "-IconUpdate- %s" $ show windowData
+  let runHUD = flip runReaderT c
   let setIconWidgetProperties = do
-        info <- maybe (return IINone) (getIconInfo cfg) windowData
-        let imgSize = windowIconSize cfg
-            statusString = maybe "nodata" getWindowStatusString windowData
+        _iconSize <- W.widgetGetAllocatedHeight iconButton
+        allocation <- W.widgetGetAllocation iconButton
+        ownAllocation <- W.widgetGetAllocation iconButton
+        sizeRequest <- W.widgetGetSizeRequest iconButton
+        -- putStrLn $ printf "Icon size: %s" $ show _iconSize
+        -- putStrLn $ printf "Window allocation %s" $ show allocation
+        -- putStrLn $ printf "Size Request %s" $ show sizeRequest
+        -- putStrLn "yooo"
+        -- putStrLn . printf "Clip %s" . show =<< W.widgetGetClip iconButton
+        let iconSize = maximum [_iconSize-4, 1]
+        info <- maybe (return IINone) (runHUD . (flip (getIconInfo cfg) iconSize)) windowData
+        let statusString = maybe "nodata" getWindowStatusString windowData
             iconInfo =
               case info of
                 IINone ->
@@ -840,14 +856,13 @@ updateIconWidget _ IconWidget
                   then transparentInfo
                   else IINone
                 _ -> info
-        lift $ do
-          mpixBuf <- getPixBuf imgSize iconInfo
-          setImage imgSize image mpixBuf
-          updateWidgetClasses iconButton [statusString] possibleStatusStrings
+        mpixBuf <- getPixBuf iconSize iconInfo
+        setImage iconSize image mpixBuf
+        updateWidgetClasses iconButton [statusString] possibleStatusStrings
 
   void $ updateVar windowRef $ \currentData ->
     when (forceUpdate || (windowId <$> currentData) == (windowId <$> windowData))
-         setIconWidgetProperties >> return windowData
+         (lift setIconWidgetProperties) >> return windowData
 
 setImage :: Int -> Gtk.Image -> Maybe Gtk.Pixbuf -> IO ()
 setImage imgSize img pixBuf =

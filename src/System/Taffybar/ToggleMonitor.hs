@@ -64,6 +64,7 @@ toggleStateFile = (</> "toggleState.hs") <$> getDataDir
 
 handleToggleRequests :: MV.MVar (M.Map Int Bool) -> IO () -> IO ()
 handleToggleRequests enabledVar refreshTaffyWindows = do
+  putStrLn "running server"
   let toggleTaffyOnMon fn mon = do
         MV.modifyMVar_ enabledVar $ \numToEnabled -> do
           let current = fromMaybe True $ M.lookup mon numToEnabled
@@ -103,4 +104,4 @@ withToggleSupport config = do
   let modified = config { startRefresher = handleToggleRequests enabledVar
                         , getMonitorConfig = toggleableMonitors enabledVar
                         }
-  defaultTaffybar modified
+  taffybarMain config
