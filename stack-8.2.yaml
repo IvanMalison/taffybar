@@ -4,14 +4,26 @@ packages:
     git: https://github.com/travitch/gtk-traymanager.git
     commit: 517b24722b2cdab2dadbafa882ffcb6b8a1d01ff
   extra-dep: true
+- location:
+    git: https://github.com/IvanMalison/haskell-dbus
+    commit: b3cea91c63c3534a6d479db22db01481c3b6a687
+  extra-dep: true
+- location:
+    git: https://github.com/IvanMalison/status-notifier-item
+    commit: 0f634fb49da593490179155587d274eeaa512562
+  extra-dep: true
+- location: ../../../../../Projects/status-notifier-item
+  extra-dep: true
+- location: ../../../../../Projects/haskell-dbus
+  extra-dep: true
 extra-deps:
   - time-units-1.0.0
   - rate-limit-1.4.0
   - xmonad-contrib-0.13
   - gtk3-0.14.7
   - X11-xft-0.3.1
-  - dbus-1.0.0
   - libxml-sax-0.7.5
   - xml-helpers-1.0.0
   - gio-0.13.4.1
-resolver: lts-10.5
+resolver: lts-10.8
+allow-newer: true

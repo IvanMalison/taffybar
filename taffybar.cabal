@@ -31,6 +31,7 @@ library
                , HStringTemplate >= 0.8 && < 0.9
                , HTTP
                , X11 >= 1.5.0.1
+               , bytestring
                , cairo
                , containers
                , dbus > 1.0
@@ -51,6 +52,7 @@ library
                , rate-limit >= 1.1.1
                , safe >= 0.3 && < 1
                , split >= 0.1.4.2
+               , status-notifier-item
                , stm
                , text
                , time >= 1.4 && < 1.9
@@ -106,6 +108,7 @@ library
                    System.Taffybar.WorkspaceSwitcher,
                    System.Taffybar.Widgets.PollingGraph,
                    System.Taffybar.Widgets.PollingLabel,
+                   System.Taffybar.Widgets.StatusNotifierTray,
                    System.Taffybar.Widgets.Util,
                    System.Taffybar.Widgets.VerticalBar,
                    System.Information.StreamInfo,
