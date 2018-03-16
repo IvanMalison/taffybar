@@ -23,7 +23,7 @@ colorspace = Gtk.ColorspaceRgb
 buildTray :: IO Gtk.Widget
 buildTray = do
   box <- Gtk.hBoxNew False 5
-  let updateHandler NewItem info =
+  let updateHandler ItemAdded info =
         do
           putStrLn "Handling new item"
           pixBuf <- getPixBufFromInfo info
@@ -31,6 +31,11 @@ buildTray = do
           Gtk.imageSetFromPixbuf img pixBuf
           Gtk.widgetShowAll img
           Gtk.boxPackStart box img Gtk.PackNatural 0
+      updateHandler IconUpdated info =
+        do
+          putStrLn "Handling icon update"
+          pixBuf <- getPixBufFromInfo info
+          return ()
       updateHandler _ _ = return ()
       getPixBufFromInfo ItemInfo { iconPixmaps = pixmaps } = do
         let (width, height, pixmap) = head pixmaps
@@ -42,6 +47,6 @@ buildTray = do
                    (fromIntegral width) (fromIntegral height) rowStride
         unsafeUseAsCString pixmap finish
   join $ H.build H.defaultParams { uniqueIdentifier = "taffybar"
-                                 , handleUpdate = updateHandler
+                                 , handleUpdate = (fmap . fmap) Gtk.postGUIAsync updateHandler
                                  }
   return $ Gtk.toWidget box
